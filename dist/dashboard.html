@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>虫害风险预测 · 建模实操动态看板</title>
+<style>
+  :root{
+    --bg:#0b1220; --panel:#131c2e; --panel2:#182239; --line:#263350;
+    --txt:#e8eefc; --dim:#8fa3c8; --accent:#4cc9f0; --accent2:#7b61ff;
+    --good:#38d39f; --warn:#ffb454; --bad:#ff5d73;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:radial-gradient(1200px 600px at 80% -10%,#1b2b4d 0%,var(--bg) 55%);
+       color:var(--txt);font-family:"Microsoft YaHei","PingFang SC",sans-serif;
+       min-height:100vh;padding:88px 18px 60px}
+  nav{position:fixed;top:0;left:0;right:0;z-index:99;display:flex;align-items:center;gap:6px;
+      padding:12px 26px;background:rgba(11,18,32,.92);backdrop-filter:blur(8px);
+      border-bottom:1px solid var(--line)}
+  nav .brand{font-weight:800;font-size:15px;margin-right:22px;
+      background:linear-gradient(90deg,var(--accent),var(--accent2));
+      -webkit-background-clip:text;background-clip:text;color:transparent}
+  nav a{color:var(--dim);text-decoration:none;font-size:13px;padding:7px 16px;border-radius:8px;transition:.2s}
+  nav a:hover{color:var(--txt);background:#182239}
+  nav a.on{color:#06121f;background:linear-gradient(90deg,var(--accent),var(--accent2));font-weight:700}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:26px;letter-spacing:1px}
+  h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));
+          -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--dim);margin-top:6px;font-size:13px}
+  .grid{display:grid;gap:16px;margin-top:18px}
+  .g4{grid-template-columns:repeat(4,1fr)} .g2{grid-template-columns:1fr 1fr}
+  @media(max-width:900px){.g4{grid-template-columns:repeat(2,1fr)}.g2{grid-template-columns:1fr}}
+  @media(max-width:640px){
+    nav{padding:8px 12px;flex-wrap:wrap;gap:4px}
+    nav .brand{width:100%;margin:0 0 2px;font-size:13px}
+    nav a{padding:6px 10px;font-size:12px}
+    body{padding:100px 10px 40px}
+    h1{font-size:20px}
+    .kpi .num{font-size:30px}
+    .step{min-width:46%}
+    .frow{grid-template-columns:96px 1fr 52px;font-size:12px}
+    .arrow{display:none}
+  }
+  .card{background:linear-gradient(160deg,var(--panel),var(--panel2));
+        border:1px solid var(--line);border-radius:14px;padding:18px;
+        box-shadow:0 8px 24px rgba(0,0,0,.35);opacity:0;transform:translateY(18px);
+        transition:opacity .6s ease,transform .6s ease}
+  .card.show{opacity:1;transform:none}
+  .card h3{font-size:14px;color:var(--dim);font-weight:600;margin-bottom:12px;
+           display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);
+       box-shadow:0 0 8px var(--accent)}
+  /* KPI */
+  .kpi .num{font-size:38px;font-weight:800;font-variant-numeric:tabular-nums}
+  .kpi .lbl{color:var(--dim);font-size:12px;margin-top:4px}
+  .kpi.a .num{color:var(--accent)} .kpi.b .num{color:var(--good)}
+  .kpi.c .num{color:var(--warn)}  .kpi.d .num{color:var(--accent2)}
+  .bar{height:6px;border-radius:3px;background:#0d1526;margin-top:12px;overflow:hidden}
+  .bar>i{display:block;height:100%;width:0;border-radius:3px;
+         background:linear-gradient(90deg,var(--accent),var(--accent2));
+         transition:width 1.4s cubic-bezier(.2,.8,.2,1)}
+  /* pipeline */
+  .pipe{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .step{flex:1;min-width:130px;background:#0d1526;border:1px solid var(--line);
+        border-radius:10px;padding:12px 14px;position:relative;transition:.4s}
+  .step b{display:block;font-size:13px;margin-bottom:4px}
+  .step small{color:var(--dim);font-size:11px}
+  .step.on{border-color:var(--accent);box-shadow:0 0 14px rgba(76,201,240,.35);
+           transform:translateY(-3px)}
+  .step .st{position:absolute;top:10px;right:12px;font-size:10px;color:var(--dim)}
+  .step.on .st{color:var(--good)}
+  .arrow{align-self:center;color:var(--dim)}
+  /* bars */
+  .frow{display:grid;grid-template-columns:150px 1fr 62px;gap:10px;
+        align-items:center;margin:9px 0;font-size:13px}
+  .frow .name{color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ftrack{height:14px;background:#0d1526;border-radius:7px;overflow:hidden}
+  .fbar{height:100%;width:0;border-radius:7px;
+        background:linear-gradient(90deg,var(--accent2),var(--accent));
+        transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+  .fbar.top{background:linear-gradient(90deg,#ff8f5d,var(--warn))}
+  .fval{color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
+  /* confusion */
+  .cm{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .cm div{border-radius:10px;padding:16px;text-align:center;background:#0d1526;
+          border:1px solid var(--line);transform:scale(.6);opacity:0;
+          transition:.5s cubic-bezier(.34,1.56,.64,1)}
+  .cm.show div{transform:scale(1);opacity:1}
+  .cm b{display:block;font-size:26px}
+  .cm small{color:var(--dim)}
+  .cm .tp b{color:var(--good)} .cm .tn b{color:var(--accent)}
+  .cm .fp b{color:var(--warn)} .cm .fn b{color:var(--bad)}
+  canvas{width:100%;display:block}
+  /* insight cards */
+  .ins{border-left:3px solid var(--warn);padding:12px 14px;background:#0d1526;
+       border-radius:0 10px 10px 0;margin:10px 0}
+  .ins b{color:var(--warn)}
+  .ins p{color:var(--dim);font-size:13px;margin-top:5px;line-height:1.7}
+  .btn{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#06121f;
+       border:0;border-radius:8px;padding:8px 20px;font-weight:700;cursor:pointer;
+       font-size:13px;transition:.2s}
+  .btn:hover{filter:brightness(1.15)}
+  .legend{display:flex;gap:16px;font-size:12px;color:var(--dim);margin-top:8px;flex-wrap:wrap}
+  .lg{display:flex;align-items:center;gap:6px}
+  .sw{width:12px;height:4px;border-radius:2px;background:var(--accent)}
+  .sw.r{background:var(--bad);height:8px;width:8px;border-radius:50%}
+  .sw.w{background:var(--warn);opacity:.5}
+  footer{margin-top:26px;color:var(--dim);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">虫害风险预测 · 模拟测试</span>
+  <a href="index.html">① 理论答卷</a>
+  <a href="dataset.html">② 数据集</a>
+  <a href="dashboard.html" class="on">③ 动态看板</a>
+</nav>
+<div class="wrap">
+  <h1>虫害风险预测 <span>建模实操动态看板</span></h1>
+  <div class="sub">加分实操题 · 150 条模拟监测数据 · 清洗 → 时序特征 → 时序切分 → 二分类建模 → 评估与特征重要性</div>
+
+  <!-- 流程管线 -->
+  <div class="grid"><div class="card">
+    <h3><span class="dot"></span>建模流程（点击任意步骤高亮）</h3>
+    <div class="pipe" id="pipe"></div>
+  </div></div>
+
+  <!-- KPI -->
+  <div class="grid g4" id="kpis"></div>
+
+  <!-- ROC + 混淆矩阵 -->
+  <div class="grid g2">
+    <div class="card"><h3><span class="dot"></span>ROC 曲线（验证集，n=29）</h3>
+      <canvas id="roc" height="300"></canvas>
+      <div class="legend"><span class="lg"><span class="sw"></span>模型 ROC</span>
+      <span class="lg"><span class="sw" style="background:#3a4a6e"></span>随机基线</span></div>
+    </div>
+    <div class="card"><h3><span class="dot"></span>混淆矩阵（阈值 0.5）</h3>
+      <div class="cm" id="cm"></div>
+      <div class="legend" style="margin-top:14px">
+        <span class="lg">Precision = TP/(TP+FP) = <b id="pv" style="color:var(--warn)"></b></span>
+        <span class="lg">Recall = TP/(TP+FN) = <b id="rv" style="color:var(--good)"></b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 特征重要性 -->
+  <div class="grid"><div class="card">
+    <h3><span class="dot"></span>特征重要性（排列重要性：打乱该特征后验证集 AUC 下降幅度，Top3 橙色）</h3>
+    <div id="feat"></div>
+  </div></div>
+
+  <!-- 时序 -->
+  <div class="grid"><div class="card">
+    <h3><span class="dot"></span>虫口密度时序与 7 天风险窗口（动态播放）</h3>
+    <canvas id="ts" height="320"></canvas>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:14px">
+      <button class="btn" id="play">▶ 播放预警扫描</button>
+      <span class="legend" style="margin:0">
+        <span class="lg"><span class="sw"></span>虫口密度</span>
+        <span class="lg"><span class="sw r"></span>虫害爆发</span>
+        <span class="lg"><span class="sw w"></span>未来 7 天预测窗口</span>
+      </span>
+    </div>
+  </div></div>
+
+  <!-- 业务解读 -->
+  <div class="grid"><div class="card">
+    <h3><span class="dot"></span>Top3 特征 · 植保业务解读</h3>
+    <div class="ins"><b>1. 靠近仓库</b><p>仓库周边木质包装、托盘与杂物堆存为白蚁、蛀木害虫提供了食源与隐蔽巢穴环境，是最强的静态风险因子。业务动作：仓库 5 米范围内列为红线巡查区，木质包装离地存放、定期翻仓检查。</p></div>
+    <div class="ins"><b>2. 区域类型 · 林地</b><p>林地植被茂密、湿度保持久、人干预少，虫口基数天然高于仓储与绿化带，是园区虫害的"虫源地"。业务动作：以林地为重点布设诱捕器网络，林-仓交界带设置监测缓冲带，防止虫害向仓储扩散。</p></div>
+    <div class="ins"><b>3. 相对湿度</b><p>高湿直接加速虫卵孵化与幼虫存活，是最强的气象驱动因子。业务动作：连续高湿天气触发预警等级上调，提前布设诱捕器、加密监测频次。</p></div>
+  </div></div>
+
+  <footer>数据源：data/ 目录 5 张 CSV（虫情监测表 150 条） · 模型流程实测见 model_demo.py · 标准答案 bonus_solution.py（LightGBM）</footer>
+</div>
+
+<script>
+const DATA = {"metrics": {"auc": 0.708, "precision": 0.6, "recall": 0.429, "kept": 145, "dropped": 5, "total": 150, "trainN": 116, "trainPos": 37, "validN": 29, "validPos": 7, "cutDate": "2025-08-24"}, "confusion": {"tp": 3, "fp": 2, "fn": 4, "tn": 20}, "roc": [[0.0, 0.0], [0.0, 0.1429], [0.0, 0.2857], [0.0455, 0.2857], [0.0455, 0.4286], [0.0909, 0.4286], [0.0909, 0.5714], [0.1364, 0.5714], [0.1818, 0.5714], [0.2273, 0.5714], [0.2727, 0.5714], [0.3182, 0.5714], [0.3636, 0.5714], [0.4091, 0.5714], [0.4091, 0.7143], [0.4545, 0.7143], [0.5, 0.7143], [0.5, 0.8571], [0.5455, 0.8571], [0.5909, 0.8571], [0.6364, 0.8571], [0.6818, 0.8571], [0.7273, 0.8571], [0.7727, 0.8571], [0.8182, 0.8571], [0.8636, 0.8571], [0.9091, 0.8571], [0.9545, 0.8571], [1.0, 0.8571], [1.0, 1.0], [1.0, 1.0]], "importance": [{"name": "靠近仓库", "value": 0.0519}, {"name": "区域_林地", "value": 0.0519}, {"name": "相对湿度", "value": 0.0325}, {"name": "连续无雨天数", "value": 0.0325}, {"name": "平均气温", "value": 0.0195}, {"name": "近30天消杀次数", "value": 0.013}, {"name": "降雨量", "value": 0.0065}, {"name": "区域_仓储", "value": 0}, {"name": "是否雨季", "value": 0}, {"name": "连续高湿天数", "value": 0}, {"name": "近7天平均虫口密度", "value": 0}, {"name": "周边积水", "value": 0}, {"name": "月份", "value": 0}, {"name": "近14天最大虫口数量", "value": 0}], "series": [{"date": "2024-06-03", "density": 120.0, "outbreak": 1, "point": "MP049"}, {"date": "2024-06-07", "density": 214.0, "outbreak": 1, "point": "MP109"}, {"date": "2024-06-10", "density": 180.0, "outbreak": 1, "point": "MP086"}, {"date": "2024-06-10", "density": 35.0, "outbreak": 0, "point": "MP087"}, {"date": "2024-06-10", "density": 37.0, "outbreak": 0, "point": "MP096"}, {"date": "2024-06-12", "density": 8.0, "outbreak": 0, "point": "MP085"}, {"date": "2024-06-12", "density": 36.0, "outbreak": 0, "point": "MP126"}, {"date": "2024-06-12", "density": 173.0, "outbreak": 1, "point": "MP092"}, {"date": "2024-06-14", "density": 58.0, "outbreak": 0, "point": "MP093"}, {"date": "2024-06-14", "density": 155.0, "outbreak": 1, "point": "MP136"}, {"date": "2024-06-18", "density": 32.0, "outbreak": 0, "point": "MP137"}, {"date": "2024-06-22", "density": 0.0, "outbreak": 0, "point": "MP011"}, {"date": "2024-06-25", "density": 22.0, "outbreak": 0, "point": "MP142"}, {"date": "2024-06-25", "density": 180.0, "outbreak": 1, "point": "MP010"}, {"date": "2024-06-26", "density": 45.0, "outbreak": 0, "point": "MP009"}, {"date": "2024-07-02", "density": 56.0, "outbreak": 0, "point": "MP131"}, {"date": "2024-07-02", "density": 16.0, "outbreak": 0, "point": "MP005"}, {"date": "2024-07-03", "density": 119.0, "outbreak": 1, "point": "MP124"}, {"date": "2024-07-03", "density": 126.0, "outbreak": 1, "point": "MP125"}, {"date": "2024-07-05", "density": 103.0, "outbreak": 1, "point": "MP068"}, {"date": "2024-07-05", "density": 47.0, "outbreak": 0, "point": "MP019"}, {"date": "2024-07-05", "density": 53.0, "outbreak": 0, "point": "MP053"}, {"date": "2024-07-09", "density": 31.0, "outbreak": 0, "point": "MP140"}, {"date": "2024-07-09", "density": 27.0, "outbreak": 0, "point": "MP127"}, {"date": "2024-07-11", "density": 232.0, "outbreak": 1, "point": "MP146"}, {"date": "2024-07-11", "density": 165.0, "outbreak": 1, "point": "MP109"}, {"date": "2024-07-11", "density": 59.0, "outbreak": 0, "point": "MP056"}, {"date": "2024-07-14", "density": 29.0, "outbreak": 0, "point": "MP053"}, {"date": "2024-07-16", "density": 68.0, "outbreak": 0, "point": "MP127"}, {"date": "2024-07-16", "density": 27.0, "outbreak": 0, "point": "MP030"}, {"date": "2024-07-24", "density": 208.0, "outbreak": 1, "point": "MP136"}, {"date": "2024-07-25", "density": 23.0, "outbreak": 0, "point": "MP097"}, {"date": "2024-07-25", "density": 36.0, "outbreak": 0, "point": "MP062"}, {"date": "2024-07-27", "density": 39.0, "outbreak": 0, "point": "MP093"}, {"date": "2024-08-04", "density": 59.0, "outbreak": 0, "point": "MP083"}, {"date": "2024-08-13", "density": 93.0, "outbreak": 1, "point": "MP061"}, {"date": "2024-08-13", "density": 5.0, "outbreak": 0, "point": "MP081"}, {"date": "2024-08-15", "density": 81.0, "outbreak": 0, "point": "MP056"}, {"date": "2024-08-16", "density": 98.0, "outbreak": 1, "point": "MP057"}, {"date": "2024-08-16", "density": 198.0, "outbreak": 1, "point": "MP002"}, {"date": "2024-08-20", "density": 50.0, "outbreak": 0, "point": "MP033"}, {"date": "2024-08-20", "density": 14.0, "outbreak": 0, "point": "MP147"}, {"date": "2024-08-20", "density": 35.0, "outbreak": 0, "point": "MP096"}, {"date": "2024-08-25", "density": 50.0, "outbreak": 0, "point": "MP013"}, {"date": "2024-08-28", "density": 185.0, "outbreak": 1, "point": "MP044"}, {"date": "2024-09-01", "density": 45.0, "outbreak": 0, "point": "MP080"}, {"date": "2024-09-03", "density": 218.0, "outbreak": 1, "point": "MP037"}, {"date": "2024-09-06", "density": 78.0, "outbreak": 0, "point": "MP022"}, {"date": "2024-09-09", "density": 130.0, "outbreak": 1, "point": "MP070"}, {"date": "2024-09-10", "density": 0.0, "outbreak": 0, "point": "MP130"}, {"date": "2024-09-15", "density": 42.0, "outbreak": 0, "point": "MP051"}, {"date": "2024-09-15", "density": 43.0, "outbreak": 0, "point": "MP113"}, {"date": "2024-09-21", "density": 68.0, "outbreak": 0, "point": "MP051"}, {"date": "2024-09-22", "density": 46.0, "outbreak": 0, "point": "MP041"}, {"date": "2024-09-25", "density": 16.0, "outbreak": 0, "point": "MP063"}, {"date": "2024-10-04", "density": 50.0, "outbreak": 0, "point": "MP112"}, {"date": "2024-10-16", "density": 20.0, "outbreak": 0, "point": "MP138"}, {"date": "2024-10-18", "density": 74.0, "outbreak": 0, "point": "MP010"}, {"date": "2024-10-22", "density": 0.0, "outbreak": 0, "point": "MP126"}, {"date": "2024-11-05", "density": 43.0, "outbreak": 0, "point": "MP087"}, {"date": "2024-11-17", "density": 73.0, "outbreak": 0, "point": "MP005"}, {"date": "2024-11-17", "density": 40.0, "outbreak": 0, "point": "MP143"}, {"date": "2024-11-27", "density": 4.0, "outbreak": 0, "point": "MP086"}, {"date": "2024-11-27", "density": 14.0, "outbreak": 0, "point": "MP049"}, {"date": "2024-11-27", "density": 42.0, "outbreak": 0, "point": "MP099"}, {"date": "2024-12-12", "density": 42.0, "outbreak": 0, "point": "MP122"}, {"date": "2024-12-15", "density": 22.0, "outbreak": 0, "point": "MP089"}, {"date": "2024-12-15", "density": 49.0, "outbreak": 0, "point": "MP113"}, {"date": "2025-01-08", "density": 55.0, "outbreak": 0, "point": "MP057"}, {"date": "2025-01-08", "density": 44.0, "outbreak": 0, "point": "MP011"}, {"date": "2025-01-20", "density": 0.0, "outbreak": 0, "point": "MP059"}, {"date": "2025-01-20", "density": 33.0, "outbreak": 0, "point": "MP043"}, {"date": "2025-02-26", "density": 36.0, "outbreak": 0, "point": "MP059"}, {"date": "2025-03-28", "density": 5.0, "outbreak": 0, "point": "MP142"}, {"date": "2025-04-02", "density": 137.0, "outbreak": 1, "point": "MP130"}, {"date": "2025-04-02", "density": 5.0, "outbreak": 0, "point": "MP080"}, {"date": "2025-04-06", "density": 57.0, "outbreak": 0, "point": "MP149"}, {"date": "2025-04-08", "density": 204.0, "outbreak": 1, "point": "MP124"}, {"date": "2025-04-16", "density": 34.0, "outbreak": 0, "point": "MP033"}, {"date": "2025-04-16", "density": 24.0, "outbreak": 0, "point": "MP123"}, {"date": "2025-04-21", "density": 23.0, "outbreak": 0, "point": "MP084"}, {"date": "2025-04-21", "density": 38.0, "outbreak": 0, "point": "MP034"}, {"date": "2025-04-21", "density": 59.0, "outbreak": 0, "point": "MP043"}, {"date": "2025-04-24", "density": 204.0, "outbreak": 1, "point": "MP082"}, {"date": "2025-04-24", "density": 59.0, "outbreak": 0, "point": "MP006"}, {"date": "2025-04-27", "density": 29.0, "outbreak": 0, "point": "MP019"}, {"date": "2025-05-01", "density": 47.0, "outbreak": 0, "point": "MP106"}, {"date": "2025-05-06", "density": 27.0, "outbreak": 0, "point": "MP085"}, {"date": "2025-05-11", "density": 16.0, "outbreak": 0, "point": "MP101"}, {"date": "2025-05-14", "density": 32.0, "outbreak": 0, "point": "MP097"}, {"date": "2025-05-21", "density": 23.0, "outbreak": 0, "point": "MP135"}, {"date": "2025-06-15", "density": 211.0, "outbreak": 1, "point": "MP060"}, {"date": "2025-06-15", "density": 0.0, "outbreak": 0, "point": "MP144"}, {"date": "2025-06-15", "density": 127.0, "outbreak": 1, "point": "MP004"}, {"date": "2025-06-22", "density": 138.0, "outbreak": 1, "point": "MP030"}, {"date": "2025-07-04", "density": 194.0, "outbreak": 1, "point": "MP106"}, {"date": "2025-07-04", "density": 24.0, "outbreak": 0, "point": "MP009"}, {"date": "2025-07-06", "density": 28.0, "outbreak": 0, "point": "MP131"}, {"date": "2025-07-06", "density": 205.0, "outbreak": 1, "point": "MP020"}, {"date": "2025-07-06", "density": 46.0, "outbreak": 0, "point": "MP069"}, {"date": "2025-07-10", "density": 158.0, "outbreak": 1, "point": "MP117"}, {"date": "2025-07-10", "density": 218.0, "outbreak": 1, "point": "MP013"}, {"date": "2025-07-10", "density": 139.0, "outbreak": 1, "point": "MP092"}, {"date": "2025-07-18", "density": 184.0, "outbreak": 1, "point": "MP061"}, {"date": "2025-07-18", "density": 116.0, "outbreak": 1, "point": "MP037"}, {"date": "2025-07-18", "density": 46.0, "outbreak": 0, "point": "MP123"}, {"date": "2025-07-23", "density": 56.0, "outbreak": 0, "point": "MP144"}, {"date": "2025-07-28", "density": 161.0, "outbreak": 1, "point": "MP002"}, {"date": "2025-07-28", "density": 150.0, "outbreak": 1, "point": "MP020"}, {"date": "2025-08-13", "density": 146.0, "outbreak": 1, "point": "MP062"}, {"date": "2025-08-14", "density": 25.0, "outbreak": 0, "point": "MP083"}, {"date": "2025-08-14", "density": 140.0, "outbreak": 1, "point": "MP060"}, {"date": "2025-08-14", "density": 222.0, "outbreak": 1, "point": "MP082"}, {"date": "2025-08-14", "density": 197.0, "outbreak": 1, "point": "MP006"}, {"date": "2025-08-16", "density": 0.0, "outbreak": 0, "point": "MP031"}, {"date": "2025-08-19", "density": 30.0, "outbreak": 0, "point": "MP039"}, {"date": "2025-08-24", "density": 110.0, "outbreak": 1, "point": "MP140"}, {"date": "2025-09-07", "density": 209.0, "outbreak": 1, "point": "MP149"}, {"date": "2025-09-07", "density": 27.0, "outbreak": 0, "point": "MP132"}, {"date": "2025-09-12", "density": 44.0, "outbreak": 0, "point": "MP122"}, {"date": "2025-09-15", "density": 215.0, "outbreak": 1, "point": "MP031"}, {"date": "2025-09-26", "density": 21.0, "outbreak": 0, "point": "MP143"}, {"date": "2025-10-05", "density": 34.0, "outbreak": 0, "point": "MP098"}, {"date": "2025-10-05", "density": 66.0, "outbreak": 0, "point": "MP125"}, {"date": "2025-12-18", "density": 32.0, "outbreak": 0, "point": "MP034"}, {"date": "2026-03-09", "density": 60.0, "outbreak": 0, "point": "MP063"}, {"date": "2026-04-02", "density": 28.0, "outbreak": 0, "point": "MP146"}, {"date": "2026-04-02", "density": 10.0, "outbreak": 0, "point": "MP044"}, {"date": "2026-04-14", "density": 44.0, "outbreak": 0, "point": "MP147"}, {"date": "2026-04-14", "density": 32.0, "outbreak": 0, "point": "MP070"}, {"date": "2026-04-16", "density": 164.0, "outbreak": 1, "point": "MP117"}, {"date": "2026-04-18", "density": 35.0, "outbreak": 0, "point": "MP089"}, {"date": "2026-04-18", "density": 49.0, "outbreak": 0, "point": "MP022"}, {"date": "2026-05-05", "density": 58.0, "outbreak": 0, "point": "MP012"}, {"date": "2026-05-05", "density": 59.0, "outbreak": 0, "point": "MP101"}, {"date": "2026-05-07", "density": 184.0, "outbreak": 1, "point": "MP012"}, {"date": "2026-05-07", "density": 44.0, "outbreak": 0, "point": "MP098"}, {"date": "2026-05-10", "density": 215.0, "outbreak": 1, "point": "MP039"}, {"date": "2026-05-10", "density": 53.0, "outbreak": 0, "point": "MP084"}, {"date": "2026-05-10", "density": 15.0, "outbreak": 0, "point": "MP137"}, {"date": "2026-05-10", "density": 241.0, "outbreak": 1, "point": "MP004"}, {"date": "2026-05-21", "density": 55.0, "outbreak": 0, "point": "MP041"}, {"date": "2026-05-24", "density": 63.0, "outbreak": 0, "point": "MP099"}, {"date": "2026-05-24", "density": 62.0, "outbreak": 0, "point": "MP135"}, {"date": "2026-05-24", "density": 22.0, "outbreak": 0, "point": "MP132"}]};
+
+/* ---------- 工具 ---------- */
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+function animate(dur, fn, done){ const t0 = performance.now();
+  (function frame(now){ const p = Math.min(1, (now - t0) / dur);
+    fn(easeOut(p)); if (p < 1) requestAnimationFrame(frame); else if (done) done(); })(t0); }
+function fitCanvas(cv){ const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = cv.getAttribute('height') * dpr;
+  const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  return [ctx, r.width, +cv.getAttribute('height')]; }
+
+/* ---------- 流程管线 ---------- */
+const steps = [
+  ['① 数据清洗','150 → 145 条，剔除缺失 3 条、异常 2 条（-15 / 99999）'],
+  ['② 时序特征','近7天平均密度 · 近14天最大虫口 · 连续高湿天数'],
+  ['③ 时序切分','前 80% 训练 116 条 / 后 20% 验证 29 条（切分点 2025-08-24）'],
+  ['④ 模型训练','二分类（类别不平衡加权），LightGBM 同流程'],
+  ['⑤ 评估解读','AUC / Precision / Recall + 特征重要性 Top3']];
+const pipe = document.getElementById('pipe');
+steps.forEach((s, i) => { const d = document.createElement('div');
+  d.className = 'step'; d.innerHTML = `<b>${s[0]}</b><small>${s[1]}</small><span class="st">待机</span>`;
+  d.onclick = () => { document.querySelectorAll('.step').forEach(x => { x.classList.remove('on'); x.querySelector('.st').textContent = '待机'; });
+    d.classList.add('on'); d.querySelector('.st').textContent = '完成 ✓'; };
+  pipe.appendChild(d);
+  if (i < steps.length - 1) { const a = document.createElement('span'); a.className = 'arrow'; a.textContent = '→'; pipe.appendChild(a); } });
+let pi = 0;
+setInterval(() => { const ss = document.querySelectorAll('.step');
+  ss.forEach(x => { x.classList.remove('on'); x.querySelector('.st').textContent = '待机'; });
+  ss[pi % ss.length].classList.add('on'); ss[pi % ss.length].querySelector('.st').textContent = '完成 ✓'; pi++; }, 1400);
+
+/* ---------- KPI 计数 ---------- */
+const M = DATA.metrics;
+const kpis = [
+  ['a', 'AUC', M.auc, 3, '排序能力 > 0.70，显著优于随机', M.auc],
+  ['b', 'Recall 召回率', M.recall, 3, `抓出 ${Math.round(M.recall*100)}% 的爆发（业务最看重）`, M.recall],
+  ['c', 'Precision 精确率', M.precision, 3, `预警中 ${Math.round(M.precision*100)}% 真爆发`, M.precision],
+  ['d', '有效样本', M.kept, 0, `清洗剔除 ${M.dropped} 条 · 爆发率 ${(100*(M.trainPos+M.validPos)/M.kept).toFixed(0)}%（类别不平衡）`, M.kept/150]];
+document.getElementById('kpis').innerHTML = kpis.map((k, i) =>
+  `<div class="card kpi ${k[0]}"><h3>${k[1]}</h3><div class="num" id="kn${i}">0</div>
+   <div class="lbl">${k[4]}</div><div class="bar"><i id="kb${i}"></i></div></div>`).join('');
+function playKpis(){ kpis.forEach((k, i) => {
+  animate(1300, p => { document.getElementById('kn' + i).textContent = (k[2] * p).toFixed(k[3]); });
+  document.getElementById('kb' + i).style.width = (k[5] * 100) + '%'; }); }
+
+/* ---------- ROC ---------- */
+function drawROC(prog){
+  const [ctx, W, H] = fitCanvas(document.getElementById('roc'));
+  const pad = 44, w = W - pad - 14, h = H - pad - 10;
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#263350'; ctx.fillStyle = '#8fa3c8';
+  ctx.font = '11px Microsoft YaHei'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++){ const x = pad + w * i / 4, y = 10 + h * i / 4;
+    ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, 10 + h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(pad + w, y); ctx.stroke();
+    ctx.fillText((i / 4).toFixed(2), x - 8, 10 + h + 16);
+    ctx.fillText((1 - i / 4).toFixed(2), 6, y + 4); }
+  ctx.fillText('FPR', pad + w - 24, 10 + h + 30); ctx.fillText('TPR', 6, 8);
+  ctx.strokeStyle = '#3a4a6e'; ctx.setLineDash([5, 5]);
+  ctx.beginPath(); ctx.moveTo(pad, 10 + h); ctx.lineTo(pad + w, 10); ctx.stroke();
+  ctx.setLineDash([]);
+  const pts = DATA.roc, n = Math.max(2, Math.floor(pts.length * prog));
+  ctx.beginPath();
+  for (let i = 0; i < n; i++){ const [f, t] = pts[i];
+    const x = pad + f * w, y = 10 + (1 - t) * h; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  ctx.strokeStyle = '#4cc9f0'; ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#4cc9f0'; ctx.shadowBlur = 10; ctx.stroke(); ctx.shadowBlur = 0;
+  if (prog > 0.98){ ctx.lineTo(pad + w, 10 + h); ctx.lineTo(pad, 10 + h); ctx.closePath();
+    ctx.fillStyle = 'rgba(76,201,240,.10)'; ctx.fill(); }
+  ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 14px Microsoft YaHei';
+  if (prog > 0.9) ctx.fillText('AUC = ' + M.auc.toFixed(3), pad + w * .55, 10 + h * .8);
+}
+function playROC(){ animate(1800, drawROC); }
+
+/* ---------- 混淆矩阵 ---------- */
+const C = DATA.confusion;
+document.getElementById('cm').innerHTML =
+  `<div class="tp"><b data-v="${C.tp}">0</b><small>TP 预警且爆发</small></div>
+   <div class="fp"><b data-v="${C.fp}">0</b><small>FP 预警未爆发</small></div>
+   <div class="fn"><b data-v="${C.fn}">0</b><small>FN 漏报 ⚠</small></div>
+   <div class="tn"><b data-v="${C.tn}">0</b><small>TN 正常未预警</small></div>`;
+document.getElementById('pv').textContent = M.precision.toFixed(3);
+document.getElementById('rv').textContent = M.recall.toFixed(3);
+function playCM(){ const cm = document.getElementById('cm'); cm.classList.add('show');
+  animate(900, p => cm.querySelectorAll('b').forEach(b =>
+    b.textContent = Math.round(+b.dataset.v * p))); }
+
+/* ---------- 特征重要性 ---------- */
+const feat = document.getElementById('feat');
+const maxV = Math.max(...DATA.importance.map(f => f.value), 1e-6);
+feat.innerHTML = DATA.importance.map((f, i) =>
+  `<div class="frow"><span class="name">${f.name}</span>
+   <div class="ftrack"><div class="fbar ${i < 3 ? 'top' : ''}" data-w="${(f.value / maxV * 100).toFixed(1)}"></div></div>
+   <span class="fval">${f.value.toFixed(4)}</span></div>`).join('');
+function playFeat(){ document.querySelectorAll('.fbar').forEach((b, i) =>
+  setTimeout(() => b.style.width = b.dataset.w + '%', i * 70)); }
+
+/* ---------- 时序 + 7 天窗口 ---------- */
+const S = DATA.series;
+let sweepX = -1;
+function drawTS(){
+  const [ctx, W, H] = fitCanvas(document.getElementById('ts'));
+  const padL = 46, padR = 14, padT = 14, padB = 34;
+  const w = W - padL - padR, h = H - padT - padB;
+  const maxD = Math.max(...S.map(s => s.density)) * 1.15;
+  const X = i => padL + w * i / (S.length - 1), Y = v => padT + h * (1 - v / maxD);
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#263350'; ctx.fillStyle = '#8fa3c8'; ctx.font = '11px Microsoft YaHei';
+  for (let i = 0; i <= 4; i++){ const y = padT + h * i / 4;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + w, y); ctx.stroke();
+    ctx.fillText(Math.round(maxD * (1 - i / 4)), 8, y + 4); }
+  [0, 0.25, 0.5, 0.75, 1].forEach(t => { const i = Math.round(t * (S.length - 1));
+    ctx.fillText(S[i].date.slice(2, 7), X(i) - 14, padT + h + 18); });
+  if (sweepX >= 0){ const bw = w * 7 / (S.length - 1) * (S.length / 60);
+    ctx.fillStyle = 'rgba(255,180,84,.14)'; ctx.fillRect(sweepX, padT, Math.min(bw, padL + w - sweepX), h);
+    ctx.strokeStyle = '#ffb454'; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(sweepX, padT); ctx.lineTo(sweepX, padT + h); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#ffb454'; ctx.fillText('T 日预测 → 未来7天', Math.min(sweepX + 4, padL + w - 90), padT + 12); }
+  ctx.beginPath();
+  S.forEach((s, i) => i ? ctx.lineTo(X(i), Y(s.density)) : ctx.moveTo(X(i), Y(s.density)));
+  ctx.strokeStyle = 'rgba(76,201,240,.85)'; ctx.lineWidth = 1.6; ctx.stroke();
+  S.forEach((s, i) => { if (!s.outbreak) return;
+    const x = X(i), y = Y(s.density);
+    const passed = sweepX < 0 || x <= sweepX + 60;
+    ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 7);
+    ctx.fillStyle = passed ? '#ff5d73' : 'rgba(255,93,115,.25)';
+    if (passed){ ctx.shadowColor = '#ff5d73'; ctx.shadowBlur = 12; }
+    ctx.fill(); ctx.shadowBlur = 0; });
+}
+drawTS();
+let playing = false;
+document.getElementById('play').onclick = () => {
+  if (playing) return; playing = true;
+  const cv = document.getElementById('ts'), W = cv.getBoundingClientRect().width;
+  animate(4200, p => { sweepX = 46 + (W - 60) * p; drawTS(); },
+          () => { playing = false; sweepX = -1; drawTS(); }); };
+
+/* ---------- 入场动画 ---------- */
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return; e.target.classList.add('show'); io.unobserve(e.target);
+  const id = e.target.querySelector('canvas')?.id;
+  if (e.target.querySelector('.kpi') !== undefined) {}
+  if (e.target.contains(document.getElementById('roc'))) playROC();
+  if (e.target.contains(document.getElementById('cm'))) playCM();
+  if (e.target.contains(document.getElementById('feat'))) playFeat();
+  if (e.target.contains(document.getElementById('ts'))) drawTS();
+}), { threshold: .25 });
+document.querySelectorAll('.card').forEach(c => io.observe(c));
+document.querySelectorAll('.kpi').forEach(c => io.observe(c));
+setTimeout(playKpis, 400);
+addEventListener('resize', () => { drawROC(1); drawTS(); });
+</script>
+</body>
+</html>
